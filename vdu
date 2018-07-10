@@ -1,0 +1,325 @@
+#!/bin/bash
+#
+# Jordan McCaskill
+# CMPT 220
+# Assignment 2 Question 2
+# 
+# Script to create a visual representation of the disk usage on the drive.
+# Takes multiple arguments, use -h flag for help. 
+
+##############################################################
+# Take a file size and abbreviate the number to be in B, KB,
+# MB or GB.
+# Globals:
+#   None
+# Arguments:
+#   size
+# Returns:
+#   Text of abreviated file size
+##############################################################
+function echo_abbr() {
+  local size
+  size=$1
+  
+  if [ $size -ge 1000000000 ]; then 
+    echo "$(($size / 1000000000)) GB"
+  elif [ $size -ge 1000000 ]; then 
+    echo "$(($size / 1000000)) MB"
+  elif [ $size -ge 1000 ]; then 
+    echo "$(($size / 1000)) KB"
+  else 
+    echo "${size} B"
+  fi
+}
+
+##############################################################
+# Make the visual representation of the file sizes
+# Globals:
+#   None
+# Arguments:
+#   largest
+#   fSize
+# Returns:
+#   Textual graph representation
+##############################################################
+function make_graph(){
+  local largest
+  largest="$1"
+  local fSize
+  fSize="$2"
+  local graph
+  graph="["
+  local count
+  count=0
+  local roof
+  roof="$(echo "(38 * ${fSize}) / ${largest}" | bc)"
+  
+  # Do the # portion of the graph
+  while [ $count -lt $roof ]; do
+    graph="${graph}#"
+    count=$(($count + 1))
+  done
+
+  # Reset the counter
+  count=0
+  roof="$(echo "38 - $roof" | bc)"
+
+  # Do the - portion of the graph
+  while [ $count -lt $roof ]; do
+    graph="${graph}-"
+    count=$(($count + 1))
+  done
+  
+  graph="${graph}]"
+
+  echo "$graph"
+}
+
+##############################################################
+# Print out the line passed by print_all
+# Globals:
+#   None
+# Arguments:
+#   high
+#   line
+# Returns:
+#   Text output of the line information
+##############################################################  
+function print_line(){
+  local high
+  high="$1"
+  local curSize
+  curSize="$2"
+  local graph
+  graph="$(make_graph "$high" "$curSize")"
+  local memSize
+
+  # Abbreviate the file size or not depending on aflag
+  if [ "$aflag" -eq 0 ]; then 
+    memSize="$(echo_abbr "$curSize")"
+  else 
+    memSize="$(echo "$curSize")"
+  fi
+  
+  shift 2
+
+  # get the file name from the remaining arguments
+  local name
+  name="$1"
+  shift
+  while [ $1 ]; do
+    name="$name $1"
+    shift
+  done
+
+  printf "%s %10s %s\n" "$graph" "$memSize" "$name"
+}
+##############################################################
+# Print out the lines showing the graph and the information
+# Globals:
+#   None
+# Arguments:
+#   data
+# Returns:
+#   Text output of the file information
+##############################################################
+function print_all() {
+  local high
+  high="$2"
+  local data
+  data="$1"
+
+  # process each line in the variable
+  echo "$data" | while read line;do
+    print_line "$high" $line
+  done
+  }
+
+##############################################################
+# Display the usage message to the user
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   Text Output
+##############################################################
+function display_usage(){
+  echo "Usage: ./vdu [options] [pathnames...]"
+  echo "Display the disk usage visually for files located within the listed"
+  echo -e "pathnames.\n"
+  echo "If no pathname arguments exist, run interactively. In this mode,"
+  echo "read lines of pathnames from standard input, effectively convert"
+  echo "each read line to pathname arguments, and display the disk usage"
+  echo -e "for that line of pathnames.\n"
+  echo -e "Options:\n-h      display this help message"
+  echo "-v      display the version of this script"
+  echo "-n n    show the largest 'n' files (default 5)"
+  echo -n "-a      show abbreviated file sizes (B=byte; "
+  echo "KB=kilobyte; MB=megabyte; GB=gigabyte)"
+  echo
+}
+
+##############################################################
+# Display the version information to the user
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   Text output
+##############################################################
+function display_version() {
+  echo "Visual Disk Usage, version 1.0.0"
+  echo "Copyright (C) 2016 Jordan McCaskill"
+}
+
+#############################################################
+# Find the n largest files based off of the n flag value
+# Globals:
+#   None
+# Arguments:
+#   path name
+# Returns:
+#   data
+#############################################################
+function find_largest() {
+  local data
+  data=""
+
+  while [ $1 ]; do
+    data="$data$(find "$1" -type f -printf %s" "%p"\n")"
+    shift
+  done
+
+  data="$(echo "$data" | sort -rn | head -n "$nflag")"
+  echo "$data"
+}
+
+#############################################################
+# Run the interactive mode of the program
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#############################################################
+function interactive() {
+  local data
+
+  while read line; do
+    if [ $line -z ]; then
+      echo Please Enter A File
+    elif ! ls $line &>/dev/null; then
+      echo File Not Found
+    else
+      data="$(find_largest $line)"
+      print_all "$data" $data
+    fi
+  done
+}
+##############################################################
+# Display the usage and version if needed and then parse for
+# the files in the given directory
+# Globals:
+#   hflag
+#   vflag
+# Arguments:
+#   $@
+# Returns:
+#   Text output
+##############################################################
+function pull_data() {
+  local data
+
+  # Check if usage needs to be printed
+  if [ "$hflag" -eq 0 ]; then
+    display_usage
+  fi
+
+  # Check of version needs to be printed
+  if [ "$vflag" -eq 0 ]; then
+    display_version
+  fi
+
+  # If the h or v flag is set then exit
+  if [ "$hflag" -eq 0 ]; then
+    exit 0
+  elif [ "$vflag" -eq 0 ]; then
+    exit 0
+  fi
+
+  # Get all the data for the selected number of files
+  if [ $1 ]; then
+    if ! ls "$1" &>/dev/null;then
+      echo Invalid File Path
+      exit 1
+    fi
+    data="$(find_largest $@)"
+    print_all "$data" $data
+  else
+    interactive
+  fi
+}
+
+##############################################################
+# Run getopt on the command line and set the variables for 
+# running the program. Execute the rest of the steps of the 
+# program
+# Globals:
+#   None  
+# Arguments:
+#   $@
+# Returns:
+#   None
+##############################################################
+function main() {
+  local hflag
+  hflag=1
+  local vflag
+  vflag=1
+  local aflag
+  aflag=1
+  local nflag
+  nflag=5
+  local temp
+  temp=`getopt -o hvan: -n 'vdu' -- "$@"`
+  
+  # set the output from getopt to be the arguments
+  eval set -- "$temp"
+
+  # Evaluate the flags from the get opt and set their variables
+  while true; do
+    case "$1" in
+      -h) 
+        hflag=0
+        shift 
+        ;;
+      -v) 
+        vflag=0
+        shift
+        ;;
+      -a)
+        aflag=0
+        shift
+        ;;
+      -n)
+        nflag="$2"
+        shift 2
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        echo "error"
+        exit 1
+        ;;
+    esac
+  done
+
+  pull_data $@
+}
+
+main $@
